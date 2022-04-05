@@ -1,3 +1,21 @@
+# Demo for different versions of NumPy
+
+This is a fork of the original repo, modified to run different versions of
+NumPy on the segmentation benchmark. On my AMD machine the times came out very
+similar. To run:
+
+```bash
+conda env create --file environment_numpy.yml
+conda activate numpy_bench
+python numpy_version_comparison
+```
+
+This will print out a data struct with rows of numyp versions and columns of
+times for different sized images
+
+The original README follows
+
+
 # Demo: Segmentation on CPU and GPU
 
 This is a demonstration of the performance benefits of using SciPy, scikit-learn

@@ -6,13 +6,6 @@ import time
 
 import tqdm
 
-import numpy.array_api as npx
-import cupy.array_api as cpx
-
-from cupyx.scipy.ndimage import gaussian_filter as cupy_gaussian_filter
-from cupyx.scipy import sparse as cupy_sparse
-
-from scipy.ndimage import gaussian_filter as scipy_gaussian_filter
 
 import matplotlib.pyplot as plt
 import skimage
@@ -24,7 +17,7 @@ from sklearn.feature_extraction import image
 from sklearn.cluster import spectral_clustering
 from sklearn.utils.fixes import parse_version
 
-from scipy import sparse as scipy_sparse
+
 
 # these were introduced in skimage-0.14
 if parse_version(skimage.__version__) >= parse_version("0.14"):
@@ -47,12 +40,14 @@ def create_image_graph(
         coins,
         filter,
         rescale,
-        return_as=scipy_sparse.coo_matrix,
+        return_as=None,
         resize_proportion=0.2
 ):
     # Resize it to 20% of the original size to speed up the processing
     # Applying a Gaussian filter for smoothing prior to down-scaling
     # reduces aliasing artifacts.
+    if return_as is None:
+        raise ValueError("return_as not specified")
     smoothened_coins = filter(coins, sigma=2)
     # Taking the old array for cucim as we don't need to change cucim to support Array API
     # We'll change skimage to support Array API rather.
@@ -114,54 +109,68 @@ def segmentation(xp, coins, gaussian_filter, return_as, show_plot=False, resize_
     return time_taken, image_shape
 
 
-def run_segmentation_performance():
-    numpy_times = []
-    cupy_times = []
+def run_segmentation_performance(xp, gaussian_filter=None, sparse=None):
+    run_times = []
     image_sizes = []
-    coins_npx = npx.asarray(coins())
-    coins_cpx = cpx.asarray(coins())
+    coins_px = xp.asarray(coins())
     for r_proportion in tqdm.tqdm(RESIZE_PROPORTIONS):
-        numpy_time, image_size = segmentation(
-            xp=npx,
-            coins=coins_npx,
-            gaussian_filter=scipy_gaussian_filter,
-            return_as=scipy_sparse.coo_matrix,
+        run_time, image_size = segmentation(
+            xp=xp,
+            coins=coins_px,
+            gaussian_filter=gaussian_filter,
+            return_as=sparse.coo_matrix,
             resize_proportion=r_proportion
         )
-        numpy_times.append(numpy_time)
+        run_times.append(run_time)
         image_sizes.append(str(image_size))
+    return run_times, image_sizes
 
-        cupy_time, _ = segmentation(
-            xp=cpx,
-            coins=coins_cpx,
-            gaussian_filter=cupy_gaussian_filter,
-            return_as=cupy_sparse.coo_matrix,
-            resize_proportion=r_proportion
-        )
-        cupy_times.append(cupy_time)
-    plot_performance(cupy_times[1:], numpy_times[1:], image_sizes[1:])
+def run_both():
+    import numpy.array_api as npx
+    import cupy.array_api as cpx
+    from scipy import sparse as scipy_sparse
+    from cupyx.scipy import sparse as cupy_sparse
+    from scipy.ndimage import gaussian_filter as scipy_gaussian_filter
+    from cupyx.scipy.ndimage import gaussian_filter as cupy_gaussian_filter
+    numpy_times, numpy_sizes = run_segmentation_performance(npx,
+        gaussian_filter=cupy_gaussian_filter,
+        sparse=cupy_sparse)
+    cupy_times, cupy_sizes = run_segmentation_performance(cpx,
+        gaussian_filter=scipy_gaussian_filter,
+        sparse=scipy_sparse)
+    
+    plot_performance([cupy_times[1:], cupy_sizes[1:], 'cupy'],
+                     [numpy_times[1:],  numpy_sizes[1:], 'numpy'])
 
 
-def plot_performance(cupy_times, numpy_times, image_sizes):
-    plt.plot(cupy_times, color="green", label="cupy")
-    plt.plot(numpy_times, color="blue", label="numpy")
+def plot_performance(data, artifacts_path=None):
+    colors = ["green", "blue", "red"]
+    xticks = data[0][1]
+    artifact_name=''
+    for i, times, sizes, label in enumerate(data):
+        if sizes != xticks:
+            raise ValueError('different image sizes cannot be handled')
+        plt.plot(times, color=colors[i % len(colors)], label=label)
+        artifact_name += label
+        artifact_name += '_vs_'
+    artifact_name = artifact_name[:-4] + '.png'
 
     # x-label
-    xi = list(range(len(image_sizes)))
-    plt.xticks(xi, image_sizes)
+    xi = list(range(len(xticks)))
+    plt.xticks(xi, xticks)
 
     plt.legend()
     plt.ylabel('Time Taken (sec)')
     plt.xlabel('Image Dimension')
-    artifacts_path = 'artifacts'
-    if not os.path.exists(artifacts_path):
-        os.mkdir(artifacts_path)
-    plot_path = os.path.join(artifacts_path, 'numpy_vs_cupy.png')
-    plt.savefig(plot_path)
+    if artifacts_path:
+        if not os.path.exists(artifacts_path):
+            os.mkdir(artifacts_path)
+        plot_path = os.path.join(artifacts_path, artifact_name)
+        plt.savefig(plot_path)
 
 
 if __name__ == '__main__':
     print("Running segmentation performance")
     t1 = time.time()
-    run_segmentation_performance()
+    run_both()
     print(f"Total Time Taken: {time.time() - t1} sec")

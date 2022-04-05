@@ -1,0 +1,10 @@
+name: numpy_bench
+channels:
+  - conda-forge
+dependencies:
+  - python=3.8
+  - scikit-image
+  - scikit-learn
+  - scipy
+  - matplotlib
+  - tqdm
